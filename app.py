@@ -42,6 +42,9 @@ body, .stApp { font-family: 'Inter', sans-serif; }
 .tag { display:inline-block; background:#374151; color:#e2e8f0; padding:3px 10px; border-radius:20px; font-size:0.78em; margin-right:6px; margin-top:6px; }
 .tag-remote { background:#065f46; color:#6ee7b7; }
 .tag-match { background:#1e3a5f; color:#60a5fa; }
+.tag-h1b-yes { background:#065f46; color:#6ee7b7; font-weight:600; }
+.tag-h1b-no { background:#7f1d1d; color:#fca5a5; font-weight:600; }
+.tag-h1b-unknown { background:#374151; color:#9ca3af; }
 .apply-btn { display:inline-block; background:linear-gradient(135deg,#f59e0b,#8b5cf6); color:white!important; padding:8px 20px; border-radius:8px; text-decoration:none; font-weight:600; margin-top:10px; font-family:'Inter',sans-serif; }
 .apply-btn:hover { opacity:0.85; color:white!important; }
 .stat-card { background:linear-gradient(135deg,#1e1e2e,#2d2d44); border:1px solid #3d3d5c; border-radius:10px; padding:16px; text-align:center; }
@@ -110,6 +113,28 @@ def extract_skills(text):
         if matched:
             found[cat] = matched
     return found
+
+def detect_h1b_status(job):
+    """Scan job title/description for H1B/visa sponsorship signals."""
+    text = f"{job.get('title','')} {job.get('description','')}".lower()
+    # Negative signals — company explicitly won't sponsor
+    no_sponsor = ["no sponsorship", "not sponsor", "no visa sponsor", "cannot sponsor", "will not sponsor",
+                  "won't sponsor", "unable to sponsor", "not able to sponsor", "does not sponsor",
+                  "without sponsorship", "no h1b", "no h-1b", "us citizens only",
+                  "must be a u.s. citizen", "must be us citizen", "permanent resident only",
+                  "green card required", "no work visa", "citizen or permanent resident only"]
+    for phrase in no_sponsor:
+        if phrase in text:
+            return "no_sponsor"
+    # Positive signals — company sponsors or is open to it
+    yes_sponsor = ["h1b sponsor", "h-1b sponsor", "visa sponsor", "sponsorship available",
+                   "will sponsor", "h1b transfer", "h-1b transfer", "immigration sponsor",
+                   "visa assistance", "work visa sponsor", "open to sponsorship",
+                   "sponsorship provided", "h1b friendly", "h-1b friendly"]
+    for phrase in yes_sponsor:
+        if phrase in text:
+            return "h1b_friendly"
+    return "unknown"
 
 def compute_match_score(job, resume_skills):
     if not resume_skills:
@@ -286,6 +311,13 @@ def freshness_label(date_str):
 def render_job_card(job, idx):
     fresh_text, fresh_class = freshness_label(job["date"])
     tags_html = ""
+    # H1B sponsorship tag
+    h1b = detect_h1b_status(job)
+    if h1b == "h1b_friendly":
+        tags_html += '<span class="tag tag-h1b-yes">H1B Friendly</span>'
+    elif h1b == "no_sponsor":
+        tags_html += '<span class="tag tag-h1b-no">No Sponsorship</span>'
+
     if job.get("job_type"):
         cls = "tag tag-remote" if "remote" in job["job_type"].lower() else "tag"
         tags_html += f'<span class="{cls}">{job["job_type"]}</span>'
@@ -349,6 +381,7 @@ search_query = ", ".join(search_queries[:3]) if search_queries else ""
 category = list(remotive_cats)[0] if len(remotive_cats) == 1 else "software-dev" if remotive_cats else ""
 
 freshness_filter = st.sidebar.selectbox("Posted within", ["Any time", "Last 24 hours", "Last 3 days", "Last 7 days", "Last 14 days"])
+h1b_filter = st.sidebar.selectbox("H1B Sponsorship", ["All Jobs", "H1B Friendly Only", "No Sponsorship", "Unknown Only"])
 
 source_filter = st.sidebar.multiselect("Sources", ["Remotive", "RemoteOK", "TheMuse", "Arbeitnow", "Google Jobs", "Adzuna"],
                                         default=["Remotive", "RemoteOK", "TheMuse", "Arbeitnow", "Google Jobs"])
@@ -471,6 +504,12 @@ if freshness_filter != "Any time":
     cutoff = datetime.utcnow() - timedelta(days=max_days)
     all_jobs = [j for j in all_jobs if not parse_date(j["date"]) or parse_date(j["date"]) >= cutoff]
 
+# H1B filter
+if h1b_filter != "All Jobs":
+    h1b_map = {"H1B Friendly Only": "h1b_friendly", "No Sponsorship": "no_sponsor", "Unknown Only": "unknown"}
+    target = h1b_map[h1b_filter]
+    all_jobs = [j for j in all_jobs if detect_h1b_status(j) == target]
+
 # Relevance filter — multi-word phrases match as phrases, single words match individually
 if combined_keywords or search_query:
     # Separate multi-word phrases from single words
@@ -577,8 +616,9 @@ with tab_bm:
 
 with tab_export:
     if all_jobs:
-        df = pd.DataFrame(all_jobs)[["title","company","location","date","category","job_type","salary","url","source"]]
-        df.columns = ["Title","Company","Location","Posted","Category","Type","Salary","Apply Link","Source"]
+        export_jobs = [{**j, "h1b_status": {"h1b_friendly":"H1B Friendly","no_sponsor":"No Sponsorship","unknown":"Unknown"}[detect_h1b_status(j)]} for j in all_jobs]
+        df = pd.DataFrame(export_jobs)[["title","company","location","date","category","job_type","salary","h1b_status","url","source"]]
+        df.columns = ["Title","Company","Location","Posted","Category","Type","Salary","H1B Status","Apply Link","Source"]
         st.download_button("Download CSV", df.to_csv(index=False), "job_listings.csv", "text/csv", use_container_width=True)
         st.dataframe(df, use_container_width=True, height=400)
     else:

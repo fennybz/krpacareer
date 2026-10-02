@@ -265,33 +265,6 @@ def fetch_themuse(query="engineer", page=0, muse_category="Engineering"):
     except: return []
 
 @st.cache_data(ttl=300)
-def fetch_arbeitnow(query=""):
-    try:
-        resp = requests.get("https://www.arbeitnow.com/api/job-board-api", timeout=15)
-        resp.raise_for_status()
-        qwords = [w.lower() for w in query.split() if len(w) > 2] if query else []
-        jobs = []
-        for j in resp.json().get("data",[]):
-            title = j.get("title","")
-            if qwords:
-                txt = f"{title} {' '.join(j.get('tags',[]))}".lower()
-                if not any(w in txt for w in qwords): continue
-            loc = j.get("location","")
-            if j.get("remote"): loc = f"Remote - {loc}" if loc else "Remote"
-            # Convert unix timestamp
-            created = j.get("created_at","")
-            if isinstance(created, (int, float)):
-                try: created = datetime.utcfromtimestamp(created).strftime("%Y-%m-%dT%H:%M:%S")
-                except: created = ""
-            jobs.append({"title": title, "company": j.get("company_name",""), "location": loc,
-                         "url": j.get("url",""), "date": str(created),
-                         "category": ", ".join(j.get("tags",[])[:3]), "job_type": "Remote" if j.get("remote") else "On-site",
-                         "salary": "", "tags": j.get("tags",[]), "description": j.get("description","") or "",
-                         "source": "Arbeitnow"})
-        return jobs[:50]
-    except: return []
-
-@st.cache_data(ttl=300)
 def fetch_adzuna(query="software engineer", location="us", api_id="", api_key=""):
     if not api_id or not api_key: return []
     try:
@@ -435,8 +408,8 @@ category = list(remotive_cats)[0] if len(remotive_cats) == 1 else "software-dev"
 freshness_filter = st.sidebar.selectbox("Posted within", ["Any time", "Last 24 hours", "Last 3 days", "Last 7 days", "Last 14 days"])
 h1b_filter = st.sidebar.selectbox("H1B Sponsorship", ["All Jobs", "H1B Friendly / Likely", "No Sponsorship", "Unknown Only"])
 
-source_filter = st.sidebar.multiselect("Sources", ["Remotive", "RemoteOK", "TheMuse", "Arbeitnow", "Google Jobs", "Adzuna"],
-                                        default=["Remotive", "RemoteOK", "TheMuse", "Arbeitnow", "Google Jobs"])
+source_filter = st.sidebar.multiselect("Sources", ["Remotive", "RemoteOK", "TheMuse", "Google Jobs", "Adzuna"],
+                                        default=["Remotive", "RemoteOK", "TheMuse", "Google Jobs"])
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Resume Upload")
@@ -524,8 +497,6 @@ if needs_search:
                 all_jobs.extend(fetch_remotive(query=q, category=category))
             if "RemoteOK" in source_filter:
                 all_jobs.extend(fetch_remoteok(query=q))
-            if "Arbeitnow" in source_filter:
-                all_jobs.extend(fetch_arbeitnow(query=q))
         # TheMuse — search each category but use combined query
         if "TheMuse" in source_filter:
             for mc in muse_cats_to_search:
@@ -790,11 +761,9 @@ with tab_setup:
 - **Remotive** — remote tech jobs
 - **RemoteOK** — remote jobs
 - **TheMuse** — 700+ engineering jobs from major companies
-- **Arbeitnow** — 300+ remote/hybrid jobs
-
 ### Optional API Keys (free tiers)
 
-**JSearch** (LinkedIn, Indeed, Glassdoor, ZipRecruiter)
+**Google Jobs** (LinkedIn, Indeed, Glassdoor)
 1. Go to [RapidAPI - JSearch](https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch)
 2. Sign up free — 500 requests/month
 3. Copy your X-RapidAPI-Key and paste in sidebar

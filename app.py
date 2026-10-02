@@ -43,6 +43,7 @@ body, .stApp { font-family: 'Inter', sans-serif; }
 .tag-remote { background:#065f46; color:#6ee7b7; }
 .tag-match { background:#1e3a5f; color:#60a5fa; }
 .tag-h1b-yes { background:#065f46; color:#6ee7b7; font-weight:600; }
+.tag-h1b-likely { background:#1e3a5f; color:#93c5fd; font-weight:600; }
 .tag-h1b-no { background:#7f1d1d; color:#fca5a5; font-weight:600; }
 .tag-h1b-unknown { background:#374151; color:#9ca3af; }
 .apply-btn { display:inline-block; background:linear-gradient(135deg,#f59e0b,#8b5cf6); color:white!important; padding:8px 20px; border-radius:8px; text-decoration:none; font-weight:600; margin-top:10px; font-family:'Inter',sans-serif; }
@@ -114,26 +115,74 @@ def extract_skills(text):
             found[cat] = matched
     return found
 
+# Major companies known to sponsor H1B visas (from USCIS H1B employer data)
+H1B_SPONSOR_COMPANIES = {
+    "google", "meta", "amazon", "microsoft", "apple", "netflix", "salesforce",
+    "oracle", "ibm", "intel", "cisco", "adobe", "vmware", "nvidia", "qualcomm",
+    "uber", "lyft", "airbnb", "stripe", "palantir", "snowflake", "databricks",
+    "coinbase", "robinhood", "doordash", "instacart", "pinterest", "snap",
+    "twitter", "x corp", "linkedin", "github", "atlassian", "twilio", "okta",
+    "datadog", "splunk", "servicenow", "workday", "palo alto networks",
+    "crowdstrike", "zscaler", "fortinet", "elastic", "confluent", "mongodb",
+    "hashicorp", "cloudflare", "fastly", "akamai", "veeva systems",
+    "deloitte", "accenture", "cognizant", "infosys", "tcs", "wipro", "hcl",
+    "capgemini", "ey", "ernst & young", "kpmg", "pwc", "mckinsey", "bain",
+    "boston consulting", "jpmorgan", "jp morgan", "goldman sachs", "morgan stanley",
+    "bank of america", "citigroup", "citi", "wells fargo", "capital one",
+    "american express", "visa inc", "mastercard", "paypal", "square", "block",
+    "tesla", "spacex", "boeing", "lockheed martin", "raytheon", "northrop grumman",
+    "general electric", "ge", "siemens", "honeywell", "3m", "johnson & johnson",
+    "pfizer", "merck", "abbvie", "amgen", "gilead", "regeneron", "moderna",
+    "unitedhealth", "anthem", "cigna", "humana", "cvs health",
+    "walmart", "target", "costco", "home depot", "lowes",
+    "samsung", "sony", "toshiba", "panasonic", "lg",
+    "sap", "dell", "hp", "hewlett packard", "lenovo",
+    "zoom", "slack", "dropbox", "box", "asana", "monday.com",
+    "figma", "canva", "notion", "airtable", "miro",
+    "epic systems", "cerner", "medidata", "veracyte",
+    "walmart global tech", "target tech", "disney", "comcast", "verizon", "at&t",
+    "t-mobile", "sprint", "charter communications",
+    "red hat", "canonical", "suse", "docker", "github",
+    "bloomberg", "thomson reuters", "reuters", "factset",
+    "two sigma", "citadel", "jane street", "de shaw", "bridgewater",
+    "applied materials", "lam research", "kla", "asml", "synopsys", "cadence",
+    "marvell", "broadcom", "texas instruments", "analog devices", "microchip",
+}
+
 def detect_h1b_status(job):
     """Scan job title/description for H1B/visa sponsorship signals."""
     text = f"{job.get('title','')} {job.get('description','')}".lower()
+    company = job.get("company", "").lower().strip()
+
     # Negative signals — company explicitly won't sponsor
     no_sponsor = ["no sponsorship", "not sponsor", "no visa sponsor", "cannot sponsor", "will not sponsor",
                   "won't sponsor", "unable to sponsor", "not able to sponsor", "does not sponsor",
                   "without sponsorship", "no h1b", "no h-1b", "us citizens only",
                   "must be a u.s. citizen", "must be us citizen", "permanent resident only",
-                  "green card required", "no work visa", "citizen or permanent resident only"]
+                  "green card required", "no work visa", "citizen or permanent resident only",
+                  "not eligible for sponsorship", "u.s. person", "clearance required",
+                  "security clearance", "public trust"]
     for phrase in no_sponsor:
         if phrase in text:
             return "no_sponsor"
+
     # Positive signals — company sponsors or is open to it
     yes_sponsor = ["h1b sponsor", "h-1b sponsor", "visa sponsor", "sponsorship available",
                    "will sponsor", "h1b transfer", "h-1b transfer", "immigration sponsor",
                    "visa assistance", "work visa sponsor", "open to sponsorship",
-                   "sponsorship provided", "h1b friendly", "h-1b friendly"]
+                   "sponsorship provided", "h1b friendly", "h-1b friendly",
+                   "h1b", "h-1b", "work authorization sponsor", "immigration support",
+                   "visa support", "relocation assistance"]
     for phrase in yes_sponsor:
         if phrase in text:
             return "h1b_friendly"
+
+    # Fallback — check if company is a known H1B sponsor
+    if company:
+        for known in H1B_SPONSOR_COMPANIES:
+            if known in company or company in known:
+                return "h1b_likely"
+
     return "unknown"
 
 def compute_match_score(job, resume_skills):
@@ -159,7 +208,7 @@ def fetch_remotive(query="", category="", limit=50):
         return [{"title": j.get("title",""), "company": j.get("company_name",""), "location": j.get("candidate_required_location","Anywhere"),
                  "url": j.get("url",""), "date": j.get("publication_date",""), "category": j.get("category",""),
                  "job_type": j.get("job_type",""), "salary": j.get("salary",""), "tags": j.get("tags",[]),
-                 "description": (j.get("description","") or "")[:500], "source": "Remotive"} for j in resp.json().get("jobs",[])]
+                 "description": j.get("description","") or "", "source": "Remotive"} for j in resp.json().get("jobs",[])]
     except Exception as e:
         return []
 
@@ -181,7 +230,7 @@ def fetch_remoteok(query=""):
             jobs.append({"title": title, "company": j.get("company",""), "location": j.get("location","Remote"),
                          "url": j.get("url", f"https://remoteok.com/l/{j.get('id','')}"), "date": j.get("date",""),
                          "category": ", ".join(j.get("tags",[])[:3]), "job_type": "Remote", "salary": "",
-                         "tags": j.get("tags",[]), "description": (j.get("description","") or "")[:500], "source": "RemoteOK"})
+                         "tags": j.get("tags",[]), "description": j.get("description","") or "", "source": "RemoteOK"})
         return jobs[:50]
     except: return []
 
@@ -198,7 +247,7 @@ def fetch_themuse(query="engineer", page=0, muse_category="Engineering"):
             title = j.get("name","")
             company = j.get("company",{}).get("name","")
             locs = ", ".join(loc.get("name","") for loc in j.get("locations",[])) or "See posting"
-            desc = re.sub(r'<[^>]+>', ' ', (j.get("contents","") or "")[:500]).strip()
+            desc = re.sub(r'<[^>]+>', ' ', j.get("contents","") or "").strip()
             pub = j.get("publication_date","")
             if qwords:
                 txt = f"{title} {desc} {company}".lower()
@@ -236,7 +285,7 @@ def fetch_arbeitnow(query=""):
             jobs.append({"title": title, "company": j.get("company_name",""), "location": loc,
                          "url": j.get("url",""), "date": str(created),
                          "category": ", ".join(j.get("tags",[])[:3]), "job_type": "Remote" if j.get("remote") else "On-site",
-                         "salary": "", "tags": j.get("tags",[]), "description": (j.get("description","") or "")[:500],
+                         "salary": "", "tags": j.get("tags",[]), "description": j.get("description","") or "",
                          "source": "Arbeitnow"})
         return jobs[:50]
     except: return []
@@ -252,7 +301,7 @@ def fetch_adzuna(query="software engineer", location="us", api_id="", api_key=""
                  "location": j.get("location",{}).get("display_name",""), "url": j.get("redirect_url",""),
                  "date": j.get("created",""), "category": j.get("category",{}).get("label",""), "job_type": j.get("contract_type",""),
                  "salary": f"${j['salary_min']:,.0f}-${j['salary_max']:,.0f}" if j.get("salary_min") and j.get("salary_max") else "",
-                 "tags": [], "description": (j.get("description","") or "")[:500], "source": "Adzuna"} for j in resp.json().get("results",[])]
+                 "tags": [], "description": j.get("description","") or "", "source": "Adzuna"} for j in resp.json().get("results",[])]
     except: return []
 
 @st.cache_data(ttl=300)
@@ -279,7 +328,7 @@ def fetch_jobs_live(query="software engineer", api_key="", location="United Stat
                 "job_type": "",
                 "salary": j.get("salary", ""),
                 "tags": [],
-                "description": (j.get("description", "") or "")[:500],
+                "description": j.get("description", "") or "",
                 "source": "Google Jobs (LinkedIn/Indeed/Glassdoor)",
             })
         return jobs
@@ -315,6 +364,8 @@ def render_job_card(job, idx):
     h1b = detect_h1b_status(job)
     if h1b == "h1b_friendly":
         tags_html += '<span class="tag tag-h1b-yes">H1B Friendly</span>'
+    elif h1b == "h1b_likely":
+        tags_html += '<span class="tag tag-h1b-likely">Likely Sponsors H1B</span>'
     elif h1b == "no_sponsor":
         tags_html += '<span class="tag tag-h1b-no">No Sponsorship</span>'
 
@@ -381,7 +432,7 @@ search_query = ", ".join(search_queries[:3]) if search_queries else ""
 category = list(remotive_cats)[0] if len(remotive_cats) == 1 else "software-dev" if remotive_cats else ""
 
 freshness_filter = st.sidebar.selectbox("Posted within", ["Any time", "Last 24 hours", "Last 3 days", "Last 7 days", "Last 14 days"])
-h1b_filter = st.sidebar.selectbox("H1B Sponsorship", ["All Jobs", "H1B Friendly Only", "No Sponsorship", "Unknown Only"])
+h1b_filter = st.sidebar.selectbox("H1B Sponsorship", ["All Jobs", "H1B Friendly / Likely", "No Sponsorship", "Unknown Only"])
 
 source_filter = st.sidebar.multiselect("Sources", ["Remotive", "RemoteOK", "TheMuse", "Arbeitnow", "Google Jobs", "Adzuna"],
                                         default=["Remotive", "RemoteOK", "TheMuse", "Arbeitnow", "Google Jobs"])
@@ -506,9 +557,12 @@ if freshness_filter != "Any time":
 
 # H1B filter
 if h1b_filter != "All Jobs":
-    h1b_map = {"H1B Friendly Only": "h1b_friendly", "No Sponsorship": "no_sponsor", "Unknown Only": "unknown"}
-    target = h1b_map[h1b_filter]
-    all_jobs = [j for j in all_jobs if detect_h1b_status(j) == target]
+    if h1b_filter == "H1B Friendly / Likely":
+        all_jobs = [j for j in all_jobs if detect_h1b_status(j) in ("h1b_friendly", "h1b_likely")]
+    elif h1b_filter == "No Sponsorship":
+        all_jobs = [j for j in all_jobs if detect_h1b_status(j) == "no_sponsor"]
+    elif h1b_filter == "Unknown Only":
+        all_jobs = [j for j in all_jobs if detect_h1b_status(j) == "unknown"]
 
 # Relevance filter — multi-word phrases match as phrases, single words match individually
 if combined_keywords or search_query:
@@ -616,7 +670,7 @@ with tab_bm:
 
 with tab_export:
     if all_jobs:
-        export_jobs = [{**j, "h1b_status": {"h1b_friendly":"H1B Friendly","no_sponsor":"No Sponsorship","unknown":"Unknown"}[detect_h1b_status(j)]} for j in all_jobs]
+        export_jobs = [{**j, "h1b_status": {"h1b_friendly":"H1B Friendly","h1b_likely":"Likely Sponsors","no_sponsor":"No Sponsorship","unknown":"Unknown"}[detect_h1b_status(j)]} for j in all_jobs]
         df = pd.DataFrame(export_jobs)[["title","company","location","date","category","job_type","salary","h1b_status","url","source"]]
         df.columns = ["Title","Company","Location","Posted","Category","Type","Salary","H1B Status","Apply Link","Source"]
         st.download_button("Download CSV", df.to_csv(index=False), "job_listings.csv", "text/csv", use_container_width=True)

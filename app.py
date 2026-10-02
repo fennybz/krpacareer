@@ -583,8 +583,51 @@ if needs_search:
             if not loc or loc in ("", "see posting"):
                 usa_only.append(j)
                 continue
-            # Check remote/anywhere
-            if "remote" in loc or "anywhere" in loc:
+            # Reject if location mentions a non-USA place (even if also says "remote")
+            non_usa_places = {"germany", "berlin", "munich", "hamburg", "frankfurt",
+                "uk", "united kingdom", "london", "england", "manchester", "leeds",
+                "glasgow", "edinburgh", "bristol", "cambridge uk", "oxford uk",
+                "france", "paris", "lyon", "marseille", "toulouse", "bordeaux",
+                "india", "mumbai", "bangalore", "bengaluru", "hyderabad", "pune",
+                "chennai", "delhi", "noida", "gurgaon", "kolkata",
+                "canada", "toronto", "vancouver", "montreal", "ottawa", "calgary",
+                "ireland", "dublin", "cork", "galway",
+                "australia", "sydney", "melbourne", "brisbane", "perth",
+                "singapore", "japan", "tokyo", "osaka",
+                "netherlands", "amsterdam", "rotterdam", "eindhoven",
+                "spain", "madrid", "barcelona", "valencia",
+                "italy", "milan", "rome", "turin",
+                "sweden", "stockholm", "gothenburg",
+                "switzerland", "zurich", "geneva", "basel",
+                "austria", "vienna", "poland", "warsaw", "krakow", "wroclaw",
+                "portugal", "lisbon", "porto", "belgium", "brussels",
+                "norway", "oslo", "denmark", "copenhagen", "finland", "helsinki",
+                "czech", "prague", "brno", "romania", "bucharest",
+                "hungary", "budapest", "israel", "tel aviv",
+                "south korea", "seoul", "china", "beijing", "shanghai", "shenzhen",
+                "hong kong", "taiwan", "taipei",
+                "brazil", "sao paulo", "rio", "mexico", "mexico city",
+                "argentina", "buenos aires", "colombia", "bogota",
+                "philippines", "manila", "indonesia", "jakarta",
+                "vietnam", "thailand", "bangkok", "pakistan", "karachi", "lahore",
+                "nigeria", "lagos", "south africa", "cape town", "johannesburg",
+                "kenya", "nairobi", "egypt", "cairo",
+                "new zealand", "auckland", "wellington",
+                "scotland", "wales", "belfast", "northern ireland",
+                "ukraine", "kyiv", "estonia", "tallinn", "latvia", "riga",
+                "lithuania", "vilnius", "croatia", "zagreb", "serbia", "belgrade",
+                "bulgaria", "sofia", "greece", "athens", "slovakia", "bratislava",
+                "slovenia", "ljubljana", "luxembourg", "malta", "cyprus", "iceland",
+                "costa rica", "panama", "ecuador", "uruguay", "chile", "santiago",
+                "peru", "lima", "bolivia", "venezuela", "dominican republic",
+                "sri lanka", "bangladesh", "dhaka", "nepal", "cambodia", "myanmar",
+                "malaysia", "kuala lumpur", "saudi arabia", "riyadh", "dubai", "uae",
+                "qatar", "doha", "bahrain", "kuwait", "oman", "jordan", "amman",
+                "turkey", "istanbul", "ankara", "russia", "moscow"}
+            if any(nusa in loc for nusa in non_usa_places):
+                continue
+            # Check remote/anywhere (only after confirming not non-USA)
+            if "remote" in loc or "anywhere" in loc or "worldwide" in loc:
                 usa_only.append(j)
                 continue
             is_usa = False

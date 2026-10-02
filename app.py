@@ -198,44 +198,6 @@ def compute_match_score(job, resume_skills):
 
 # ─── API Functions ───
 @st.cache_data(ttl=300)
-def fetch_remotive(query="", category="", limit=50):
-    try:
-        params = {"limit": limit}
-        if query: params["search"] = query
-        if category: params["category"] = category
-        params["location"] = "usa"
-        resp = requests.get("https://remotive.com/api/remote-jobs", params=params, timeout=15)
-        resp.raise_for_status()
-        return [{"title": j.get("title",""), "company": j.get("company_name",""), "location": j.get("candidate_required_location","Anywhere"),
-                 "url": j.get("url",""), "date": j.get("publication_date",""), "category": j.get("category",""),
-                 "job_type": j.get("job_type",""), "salary": j.get("salary",""), "tags": j.get("tags",[]),
-                 "description": j.get("description","") or "", "source": "Remotive"} for j in resp.json().get("jobs",[])]
-    except Exception as e:
-        return []
-
-@st.cache_data(ttl=300)
-def fetch_remoteok(query=""):
-    try:
-        resp = requests.get("https://remoteok.com/api", headers={"User-Agent": "JobSearch/1.0"}, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
-        if data and isinstance(data[0], dict) and "legal" in str(data[0]): data = data[1:]
-        qwords = [w.lower() for w in query.split() if len(w) > 2] if query else []
-        jobs = []
-        for j in data:
-            if not isinstance(j, dict) or "id" not in j: continue
-            title = j.get("position","")
-            if qwords:
-                txt = f"{title} {' '.join(j.get('tags',[]))}".lower()
-                if not any(w in txt for w in qwords): continue
-            jobs.append({"title": title, "company": j.get("company",""), "location": j.get("location","Remote"),
-                         "url": j.get("url", f"https://remoteok.com/l/{j.get('id','')}"), "date": j.get("date",""),
-                         "category": ", ".join(j.get("tags",[])[:3]), "job_type": "Remote", "salary": "",
-                         "tags": j.get("tags",[]), "description": j.get("description","") or "", "source": "RemoteOK"})
-        return jobs[:50]
-    except: return []
-
-@st.cache_data(ttl=300)
 def fetch_themuse(query="engineer", page=0, muse_category="Engineering"):
     try:
         resp = requests.get("https://www.themuse.com/api/public/jobs",
@@ -394,22 +356,18 @@ if selected_roles:
 # Build combined search query and keywords from selected roles
 combined_keywords = set()
 search_queries = []
-remotive_cats = set()
 for role in selected_roles:
     rd = ROLES[role]
     combined_keywords.update(rd["keywords"])
     search_queries.append(role.split("/")[0].replace("&","").strip())
-    remotive_cats.add(rd["cat"])
 
-# Derive search_query and category automatically (no manual inputs needed)
 search_query = ", ".join(search_queries[:3]) if search_queries else ""
-category = list(remotive_cats)[0] if len(remotive_cats) == 1 else "software-dev" if remotive_cats else ""
 
 freshness_filter = st.sidebar.selectbox("Posted within", ["Any time", "Last 24 hours", "Last 3 days", "Last 7 days", "Last 14 days"])
 h1b_filter = st.sidebar.selectbox("H1B Sponsorship", ["All Jobs", "H1B Friendly / Likely", "No Sponsorship", "Unknown Only"])
 
-source_filter = st.sidebar.multiselect("Sources", ["Remotive", "RemoteOK", "TheMuse", "Google Jobs", "Adzuna"],
-                                        default=["Remotive", "RemoteOK", "TheMuse", "Google Jobs"])
+source_filter = st.sidebar.multiselect("Sources", ["TheMuse", "Google Jobs", "Adzuna"],
+                                        default=["TheMuse", "Google Jobs"])
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Resume Upload")
@@ -491,13 +449,7 @@ if needs_search:
         if not muse_cats_to_search:
             muse_cats_to_search.add("Engineering")
 
-        # Free APIs — multiple queries OK (no quota)
-        for q in free_queries:
-            if "Remotive" in source_filter:
-                all_jobs.extend(fetch_remotive(query=q, category=category))
-            if "RemoteOK" in source_filter:
-                all_jobs.extend(fetch_remoteok(query=q))
-        # TheMuse — search each category but use combined query
+        # TheMuse — search each category
         if "TheMuse" in source_filter:
             for mc in muse_cats_to_search:
                 for pg in range(2):
@@ -517,109 +469,7 @@ if needs_search:
             if key not in seen:
                 seen.add(key)
                 unique.append(j)
-        # Filter to USA-only jobs
-        # Long terms safe for substring matching
-        usa_cities_states = {"united states", "new york", "san francisco", "los angeles",
-            "chicago", "seattle", "austin", "denver", "boston", "atlanta", "dallas",
-            "houston", "miami", "portland", "san diego", "san jose", "phoenix",
-            "philadelphia", "charlotte", "minneapolis", "detroit", "tampa", "orlando",
-            "nashville", "raleigh", "salt lake", "pittsburgh", "columbus", "indianapolis",
-            "kansas city", "st. louis", "baltimore", "milwaukee", "sacramento",
-            "las vegas", "richmond", "hartford", "california", "texas", "florida",
-            "virginia", "maryland", "massachusetts", "illinois", "colorado",
-            "north carolina", "ohio", "pennsylvania", "arizona", "oregon", "michigan",
-            "minnesota", "tennessee", "missouri", "wisconsin", "connecticut", "utah",
-            "nevada", "new jersey", "washington", "kentucky", "alabama", "louisiana",
-            "oklahoma", "iowa", "arkansas", "mississippi", "nebraska", "idaho",
-            "hawaii", "maine", "montana", "wyoming", "vermont", "new hampshire",
-            "new mexico", "south dakota", "north dakota", "west virginia", "rhode island",
-            "delaware", "alaska", "ann arbor", "boulder", "chapel hill", "durham",
-            "irvine", "plano", "scottsdale", "tempe", "tucson", "tulsa",
-            "omaha", "madison", "cincinnati", "cleveland", "st louis", "san antonio",
-            "jacksonville", "memphis", "louisville", "oklahoma city", "el paso",
-            "albuquerque", "fresno", "mesa", "long beach", "virginia beach",
-            "colorado springs", "arlington", "wichita", "bakersfield", "boise",
-            "spokane", "tacoma", "honolulu", "anchorage", "des moines",
-            "little rock", "birmingham", "buffalo", "rochester", "norfolk"}
-        # Short terms need word-boundary regex matching
-        usa_short_codes = {"usa", "us", "ny", "ca", "tx", "fl", "wa", "co", "ma",
-            "ga", "il", "nc", "oh", "pa", "az", "or", "va", "md", "mn", "tn",
-            "mo", "ct", "nj", "wi", "in", "mi", "ky", "la", "sc", "al", "ok",
-            "ut", "nv", "nm", "ne", "ks", "id", "hi", "me", "mt", "wy", "vt",
-            "nh", "sd", "nd", "wv", "ri", "de", "ak", "ia", "ar", "ms"}
-        usa_only = []
-        for j in unique:
-            loc_raw = j.get("location", "").strip()
-            loc = loc_raw.lower()
-            if not loc or loc in ("", "see posting"):
-                usa_only.append(j)
-                continue
-            # Reject if location mentions a non-USA place (even if also says "remote")
-            non_usa_places = {"germany", "berlin", "munich", "hamburg", "frankfurt", "bonn", "cologne", "dusseldorf", "stuttgart", "nuremberg", "hanover", "dresden", "leipzig",
-                "uk", "united kingdom", "london", "england", "manchester", "leeds",
-                "glasgow", "edinburgh", "bristol", "cambridge uk", "oxford uk",
-                "france", "paris", "lyon", "marseille", "toulouse", "bordeaux",
-                "india", "mumbai", "bangalore", "bengaluru", "hyderabad", "pune",
-                "chennai", "delhi", "noida", "gurgaon", "kolkata",
-                "canada", "toronto", "vancouver", "montreal", "ottawa", "calgary",
-                "ireland", "dublin", "cork", "galway",
-                "australia", "sydney", "melbourne", "brisbane", "perth",
-                "singapore", "japan", "tokyo", "osaka",
-                "netherlands", "amsterdam", "rotterdam", "eindhoven",
-                "spain", "madrid", "barcelona", "valencia",
-                "italy", "milan", "rome", "turin",
-                "sweden", "stockholm", "gothenburg",
-                "switzerland", "zurich", "geneva", "basel",
-                "austria", "vienna", "poland", "warsaw", "krakow", "wroclaw",
-                "portugal", "lisbon", "porto", "belgium", "brussels",
-                "norway", "oslo", "denmark", "copenhagen", "finland", "helsinki",
-                "czech", "prague", "brno", "romania", "bucharest",
-                "hungary", "budapest", "israel", "tel aviv",
-                "south korea", "seoul", "china", "beijing", "shanghai", "shenzhen",
-                "hong kong", "taiwan", "taipei",
-                "brazil", "sao paulo", "rio", "mexico", "mexico city",
-                "argentina", "buenos aires", "colombia", "bogota",
-                "philippines", "manila", "indonesia", "jakarta",
-                "vietnam", "thailand", "bangkok", "pakistan", "karachi", "lahore",
-                "nigeria", "lagos", "south africa", "cape town", "johannesburg",
-                "kenya", "nairobi", "egypt", "cairo",
-                "new zealand", "auckland", "wellington",
-                "scotland", "wales", "belfast", "northern ireland",
-                "ukraine", "kyiv", "estonia", "tallinn", "latvia", "riga",
-                "lithuania", "vilnius", "croatia", "zagreb", "serbia", "belgrade",
-                "bulgaria", "sofia", "greece", "athens", "slovakia", "bratislava",
-                "slovenia", "ljubljana", "luxembourg", "malta", "cyprus", "iceland",
-                "costa rica", "panama", "ecuador", "uruguay", "chile", "santiago",
-                "peru", "lima", "bolivia", "venezuela", "dominican republic",
-                "sri lanka", "bangladesh", "dhaka", "nepal", "cambodia", "myanmar",
-                "malaysia", "kuala lumpur", "saudi arabia", "riyadh", "dubai", "uae",
-                "qatar", "doha", "bahrain", "kuwait", "oman", "jordan", "amman",
-                "turkey", "istanbul", "ankara", "russia", "moscow"}
-            if any(nusa in loc for nusa in non_usa_places):
-                continue
-            # Check remote (only after confirming not non-USA)
-            if "remote" in loc:
-                usa_only.append(j)
-                continue
-            # Reject worldwide/anywhere — too broad, often non-USA
-            if "worldwide" in loc or "anywhere" in loc:
-                continue
-            is_usa = False
-            # Substring match on long city/state names (safe, no false positives)
-            if any(ust in loc for ust in usa_cities_states):
-                is_usa = True
-            # Word-boundary match on short state codes to avoid "Paris" matching "pa"
-            if not is_usa:
-                for code in usa_short_codes:
-                    if re.search(r'\b' + code + r'\b', loc):
-                        is_usa = True
-                        break
-            # "City, ST" pattern like "Austin, TX"
-            if not is_usa and re.search(r',\s*[A-Z]{2}\s*$', loc_raw):
-                is_usa = True
-            if is_usa:
-                usa_only.append(j)
-        st.session_state.all_jobs = usa_only
+        st.session_state.all_jobs = unique
 
 all_jobs = st.session_state.get("all_jobs", [])
 
@@ -758,14 +608,13 @@ with tab_export:
 with tab_setup:
     st.markdown("""
 ### Free Sources (no keys needed)
-- **Remotive** — remote tech jobs
-- **RemoteOK** — remote jobs
-- **TheMuse** — 700+ engineering jobs from major companies
+- **TheMuse** — 700+ US engineering jobs from major companies
+
 ### Optional API Keys (free tiers)
 
-**Google Jobs** (LinkedIn, Indeed, Glassdoor)
-1. Go to [RapidAPI - JSearch](https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch)
-2. Sign up free — 500 requests/month
+**Google Jobs** (LinkedIn, Indeed, Glassdoor — USA)
+1. Go to [RapidAPI - Jobs Live](https://rapidapi.com/letscrape-6bRBa3QguO5/api/jobs-live)
+2. Sign up free
 3. Copy your X-RapidAPI-Key and paste in sidebar
 
 **Adzuna** (US, UK, CA, AU, DE, FR, IN)

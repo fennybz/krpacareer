@@ -1,6 +1,5 @@
 [server]
 runOnSave = true
-port = 8520
 headless = true
 
 [browser]

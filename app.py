@@ -249,25 +249,39 @@ def fetch_themuse(query="engineer", page=0, muse_category="Engineering"):
     except: return []
 
 @st.cache_data(ttl=300)
-def fetch_adzuna(query="software engineer", location="us", api_id="", api_key=""):
-    if not api_id or not api_key: return []
+def fetch_jooble(query="software engineer", location="USA", page=1):
+    """Fetch from Jooble — massive job aggregator, USA focused."""
     try:
-        resp = requests.get(f"https://api.adzuna.com/v1/api/jobs/{location}/search/1",
-                           params={"app_id": api_id, "app_key": api_key, "what": query, "results_per_page": 50, "sort_by": "date", "max_days_old": 7}, timeout=15)
+        resp = requests.post(
+            "https://jooble.org/api/639496e4-f06a-4fc2-a62e-c625c4680e5d",
+            json={"keywords": query, "location": location, "page": str(page)},
+            headers={"Content-Type": "application/json"},
+            timeout=15)
         resp.raise_for_status()
-        return [{"title": j.get("title",""), "company": j.get("company",{}).get("display_name",""),
-                 "location": j.get("location",{}).get("display_name",""), "url": j.get("redirect_url",""),
-                 "date": j.get("created",""), "category": j.get("category",{}).get("label",""), "job_type": j.get("contract_type",""),
-                 "salary": f"${j['salary_min']:,.0f}-${j['salary_max']:,.0f}" if j.get("salary_min") and j.get("salary_max") else "",
-                 "tags": [], "description": j.get("description","") or "", "source": "Adzuna"} for j in resp.json().get("results",[])]
+        jobs = []
+        for j in resp.json().get("jobs", []):
+            snippet = re.sub(r'<[^>]+>', ' ', j.get("snippet", "") or "").strip()
+            jobs.append({
+                "title": j.get("title", ""),
+                "company": j.get("company", ""),
+                "location": j.get("location", ""),
+                "url": j.get("link", ""),
+                "date": j.get("updated", ""),
+                "category": j.get("type", ""),
+                "job_type": j.get("type", ""),
+                "salary": j.get("salary", ""),
+                "tags": [],
+                "description": snippet,
+                "source": "Jooble",
+            })
+        return jobs
     except: return []
 
 @st.cache_data(ttl=300)
-def fetch_jobs_live(query="software engineer", api_key="", location="United States"):
+def fetch_jobs_live(query="software engineer", location="United States"):
     """Fetch from Jobs Live API (Google Jobs — LinkedIn, Indeed, Glassdoor results)."""
-    if not api_key: return []
     try:
-        headers = {"X-RapidAPI-Key": api_key, "X-RapidAPI-Host": "jobs-live.p.rapidapi.com"}
+        headers = {"X-RapidAPI-Key": "9a89b3c281mshf5d1f7f830ea18fp1cc55cjsnf9d419621974", "X-RapidAPI-Host": "jobs-live.p.rapidapi.com"}
         resp = requests.get("https://jobs-live.p.rapidapi.com/search",
                            params={"query": query, "location": location},
                            headers=headers, timeout=30)
@@ -388,8 +402,8 @@ search_query = ", ".join(search_queries[:3]) if search_queries else ""
 freshness_filter = st.sidebar.selectbox("Posted within", ["Any time", "Last 24 hours", "Last 3 days", "Last 7 days", "Last 14 days"])
 h1b_filter = st.sidebar.selectbox("H1B Sponsorship", ["All Jobs", "H1B Friendly / Likely", "No Sponsorship", "Unknown Only"])
 
-source_filter = st.sidebar.multiselect("Sources", ["TheMuse", "Google Jobs", "Adzuna"],
-                                        default=["TheMuse", "Google Jobs"])
+source_filter = st.sidebar.multiselect("Sources", ["Jooble", "TheMuse", "Google Jobs"],
+                                        default=["Jooble", "TheMuse", "Google Jobs"])
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Resume Upload")
@@ -411,14 +425,6 @@ if uploaded_resume:
 else:
     for k in ["resume_skills","resume_text","resume_name"]:
         st.session_state.pop(k, None)
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("### API Keys")
-st.sidebar.caption("For Google Jobs (LinkedIn, Indeed, Glassdoor)")
-rapidapi_key = st.sidebar.text_input("RapidAPI Key", type="password", help="Your RapidAPI key for Google Jobs / Jobs Live API")
-adzuna_id = st.sidebar.text_input("Adzuna App ID", type="password")
-adzuna_key = st.sidebar.text_input("Adzuna API Key", type="password")
-adzuna_country = st.sidebar.selectbox("Adzuna Country", ["us","gb","ca","au","de","fr","in"], index=0) if adzuna_id else "us"
 
 sort_options = ["Newest first", "Company A-Z", "Title A-Z"]
 if st.session_state.get("resume_skills"): sort_options.insert(0, "Best Match")
@@ -471,6 +477,12 @@ if needs_search:
         if not muse_cats_to_search:
             muse_cats_to_search.add("Engineering")
 
+        # Jooble — massive aggregator, search per role, 2 pages each
+        if "Jooble" in source_filter:
+            for role in selected_roles:
+                for pg in range(1, 3):
+                    all_jobs.extend(fetch_jooble(query=role, location="USA", page=pg))
+
         # TheMuse — search each category with multiple pages
         if "TheMuse" in source_filter:
             for mc in muse_cats_to_search:
@@ -478,15 +490,9 @@ if needs_search:
                     all_jobs.extend(fetch_themuse(query=search_query, page=pg, muse_category=mc))
 
         # Google Jobs — search PER ROLE for maximum results
-        # Each query returns 10-20 jobs, so 5 roles = 50-100+ results
-        if "Google Jobs" in source_filter and rapidapi_key:
+        if "Google Jobs" in source_filter:
             for role in selected_roles:
-                all_jobs.extend(fetch_jobs_live(query=role, api_key=rapidapi_key))
-
-        # Adzuna — search per role
-        if "Adzuna" in source_filter and adzuna_id and adzuna_key:
-            for role in selected_roles:
-                all_jobs.extend(fetch_adzuna(query=role, api_id=adzuna_id, api_key=adzuna_key, location=adzuna_country))
+                all_jobs.extend(fetch_jobs_live(query=role))
 
         # Deduplicate by title+company
         seen = set()
@@ -634,18 +640,10 @@ with tab_export:
 
 with tab_setup:
     st.markdown("""
-### Free Sources (no keys needed)
+### Job Sources (all keys pre-configured)
+- **Jooble** — Massive job aggregator (80,000+ US tech jobs), includes salary data
 - **TheMuse** — 700+ US engineering jobs from major companies
+- **Google Jobs** — Aggregates LinkedIn, Indeed, Glassdoor results (via RapidAPI)
 
-### Optional API Keys (free tiers)
-
-**Google Jobs** (LinkedIn, Indeed, Glassdoor — USA)
-1. Go to [RapidAPI - Jobs Live](https://rapidapi.com/letscrape-6bRBa3QguO5/api/jobs-live)
-2. Sign up free
-3. Copy your X-RapidAPI-Key and paste in sidebar
-
-**Adzuna** (US, UK, CA, AU, DE, FR, IN)
-1. Go to [Adzuna Developer](https://developer.adzuna.com/)
-2. Register free — 250 requests/month
-3. Paste App ID and Key in sidebar
+All API keys are built in — no configuration needed. Just select your roles and search!
     """)

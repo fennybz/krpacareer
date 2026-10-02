@@ -199,9 +199,28 @@ def compute_match_score(job, resume_skills):
 # ─── API Functions ───
 @st.cache_data(ttl=300)
 def fetch_themuse(query="engineer", page=0, muse_category="Engineering"):
+    _non_usa = {"tokyo", "japan", "london", "uk", "united kingdom", "england",
+        "berlin", "germany", "paris", "france", "india", "mumbai", "bangalore",
+        "bengaluru", "hyderabad", "pune", "chennai", "delhi", "canada", "toronto",
+        "vancouver", "montreal", "dublin", "ireland", "australia", "sydney",
+        "melbourne", "singapore", "netherlands", "amsterdam", "spain", "madrid",
+        "barcelona", "italy", "milan", "rome", "sweden", "stockholm",
+        "switzerland", "zurich", "geneva", "austria", "vienna", "poland",
+        "warsaw", "portugal", "lisbon", "belgium", "brussels", "norway", "oslo",
+        "denmark", "copenhagen", "finland", "helsinki", "czech", "prague",
+        "romania", "bucharest", "hungary", "budapest", "israel", "tel aviv",
+        "south korea", "seoul", "china", "beijing", "shanghai", "hong kong",
+        "taiwan", "brazil", "sao paulo", "mexico", "argentina", "buenos aires",
+        "colombia", "philippines", "manila", "indonesia", "vietnam", "thailand",
+        "bangkok", "pakistan", "nigeria", "south africa", "kenya", "egypt",
+        "new zealand", "auckland", "scotland", "edinburgh", "glasgow", "wales",
+        "manchester", "leeds", "bristol", "birmingham", "dubai", "uae",
+        "saudi arabia", "qatar", "turkey", "istanbul", "russia", "moscow",
+        "ukraine", "kyiv", "malaysia", "kuala lumpur", "bonn", "cologne",
+        "munich", "hamburg", "frankfurt", "osaka", "nagoya", "yokohama"}
     try:
         resp = requests.get("https://www.themuse.com/api/public/jobs",
-                           params={"page": page, "category": muse_category},
+                           params={"page": page, "category": muse_category, "location": "United States"},
                            headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
         resp.raise_for_status()
         qwords = [w.lower() for w in query.split() if len(w) > 2] if query else []
@@ -210,6 +229,9 @@ def fetch_themuse(query="engineer", page=0, muse_category="Engineering"):
             title = j.get("name","")
             company = j.get("company",{}).get("name","")
             locs = ", ".join(loc.get("name","") for loc in j.get("locations",[])) or "See posting"
+            # Skip non-USA locations
+            if any(nusa in locs.lower() for nusa in _non_usa):
+                continue
             desc = re.sub(r'<[^>]+>', ' ', j.get("contents","") or "").strip()
             pub = j.get("publication_date","")
             if qwords:

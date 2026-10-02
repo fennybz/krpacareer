@@ -584,7 +584,7 @@ if needs_search:
                 usa_only.append(j)
                 continue
             # Reject if location mentions a non-USA place (even if also says "remote")
-            non_usa_places = {"germany", "berlin", "munich", "hamburg", "frankfurt",
+            non_usa_places = {"germany", "berlin", "munich", "hamburg", "frankfurt", "bonn", "cologne", "dusseldorf", "stuttgart", "nuremberg", "hanover", "dresden", "leipzig",
                 "uk", "united kingdom", "london", "england", "manchester", "leeds",
                 "glasgow", "edinburgh", "bristol", "cambridge uk", "oxford uk",
                 "france", "paris", "lyon", "marseille", "toulouse", "bordeaux",
@@ -626,9 +626,12 @@ if needs_search:
                 "turkey", "istanbul", "ankara", "russia", "moscow"}
             if any(nusa in loc for nusa in non_usa_places):
                 continue
-            # Check remote/anywhere (only after confirming not non-USA)
-            if "remote" in loc or "anywhere" in loc or "worldwide" in loc:
+            # Check remote (only after confirming not non-USA)
+            if "remote" in loc:
                 usa_only.append(j)
+                continue
+            # Reject worldwide/anywhere — too broad, often non-USA
+            if "worldwide" in loc or "anywhere" in loc:
                 continue
             is_usa = False
             # Substring match on long city/state names (safe, no false positives)

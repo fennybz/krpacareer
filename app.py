@@ -564,46 +564,22 @@ if needs_search:
                      "connecticut", "utah", "nevada", "new jersey", "ny", "ca",
                      "tx", "fl", "wa", "co", "ma", "ga", "il", "nc", "oh", "pa",
                      "az", "or", "va", "md", "mn", "tn", "mo", "ct", "nj"}
-        non_usa = {"germany", "uk", "united kingdom", "london", "berlin", "paris",
-                   "france", "india", "canada", "toronto", "vancouver", "mumbai",
-                   "bangalore", "hyderabad", "dublin", "ireland", "australia",
-                   "sydney", "melbourne", "singapore", "japan", "tokyo", "brazil",
-                   "mexico", "netherlands", "amsterdam", "spain", "madrid",
-                   "barcelona", "italy", "sweden", "stockholm", "switzerland",
-                   "zurich", "austria", "vienna", "poland", "warsaw", "portugal",
-                   "lisbon", "belgium", "brussels", "norway", "oslo", "denmark",
-                   "copenhagen", "finland", "helsinki", "czech", "prague",
-                   "romania", "bucharest", "hungary", "budapest", "israel",
-                   "tel aviv", "south korea", "seoul", "china", "beijing",
-                   "shanghai", "hong kong", "taiwan", "philippines", "manila",
-                   "indonesia", "jakarta", "vietnam", "thailand", "bangkok",
-                   "pakistan", "nigeria", "south africa", "kenya", "egypt",
-                   "argentina", "buenos aires", "chile", "colombia", "bogota",
-                   "peru", "new zealand", "auckland", "scotland", "edinburgh",
-                   "wales", "belfast", "manchester", "birmingham uk", "leeds",
-                   "glasgow", "bristol uk"}
         usa_only = []
         for j in unique:
-            loc = j.get("location", "").lower()
+            loc = j.get("location", "").lower().strip()
             if not loc or loc in ("", "see posting"):
                 usa_only.append(j)  # keep if no location specified
                 continue
-            # Reject if explicitly non-USA
-            if any(nusa in loc for nusa in non_usa):
-                continue
-            # Accept if matches USA terms
+            # Only keep if location positively matches USA
+            is_usa = False
+            # Check USA terms
             if any(ust in loc for ust in usa_terms):
-                usa_only.append(j)
-                continue
-            # Accept if location looks like "City, ST" (2-letter state code pattern)
+                is_usa = True
+            # Check "City, ST" pattern (2-letter state code)
             if re.search(r',\s*[A-Z]{2}\b', j.get("location", "")):
+                is_usa = True
+            if is_usa:
                 usa_only.append(j)
-                continue
-            # Accept if no clear country indicator (benefit of the doubt for remote jobs)
-            if "remote" in loc or "anywhere" in loc or "worldwide" in loc:
-                usa_only.append(j)
-                continue
-            usa_only.append(j)  # keep ambiguous ones
         st.session_state.all_jobs = usa_only
 
 all_jobs = st.session_state.get("all_jobs", [])

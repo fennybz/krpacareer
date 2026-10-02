@@ -471,17 +471,22 @@ if needs_search:
         if not muse_cats_to_search:
             muse_cats_to_search.add("Engineering")
 
-        # TheMuse — search each category
+        # TheMuse — search each category with multiple pages
         if "TheMuse" in source_filter:
             for mc in muse_cats_to_search:
-                for pg in range(2):
+                for pg in range(3):
                     all_jobs.extend(fetch_themuse(query=search_query, page=pg, muse_category=mc))
 
-        # Paid APIs — ONE request only to save quota
+        # Google Jobs — search PER ROLE for maximum results
+        # Each query returns 10-20 jobs, so 5 roles = 50-100+ results
         if "Google Jobs" in source_filter and rapidapi_key:
-            all_jobs.extend(fetch_jobs_live(query=combined_query, api_key=rapidapi_key))
+            for role in selected_roles:
+                all_jobs.extend(fetch_jobs_live(query=role, api_key=rapidapi_key))
+
+        # Adzuna — search per role
         if "Adzuna" in source_filter and adzuna_id and adzuna_key:
-            all_jobs.extend(fetch_adzuna(query=combined_query, api_id=adzuna_id, api_key=adzuna_key, location=adzuna_country))
+            for role in selected_roles:
+                all_jobs.extend(fetch_adzuna(query=role, api_id=adzuna_id, api_key=adzuna_key, location=adzuna_country))
 
         # Deduplicate by title+company
         seen = set()

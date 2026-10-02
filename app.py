@@ -249,35 +249,6 @@ def fetch_themuse(query="engineer", page=0, muse_category="Engineering"):
     except: return []
 
 @st.cache_data(ttl=300)
-def fetch_jooble(query="software engineer", location="USA", page=1):
-    """Fetch from Jooble — massive job aggregator, USA focused."""
-    try:
-        resp = requests.post(
-            "https://jooble.org/api/639496e4-f06a-4fc2-a62e-c625c4680e5d",
-            json={"keywords": query, "location": location, "page": str(page)},
-            headers={"Content-Type": "application/json"},
-            timeout=15)
-        resp.raise_for_status()
-        jobs = []
-        for j in resp.json().get("jobs", []):
-            snippet = re.sub(r'<[^>]+>', ' ', j.get("snippet", "") or "").strip()
-            jobs.append({
-                "title": j.get("title", ""),
-                "company": j.get("company", ""),
-                "location": j.get("location", ""),
-                "url": j.get("link", ""),
-                "date": j.get("updated", ""),
-                "category": j.get("type", ""),
-                "job_type": j.get("type", ""),
-                "salary": j.get("salary", ""),
-                "tags": [],
-                "description": snippet,
-                "source": "Jooble",
-            })
-        return jobs
-    except: return []
-
-@st.cache_data(ttl=300)
 def fetch_jobs_live(query="software engineer", location="United States"):
     """Fetch from Jobs Live API (Google Jobs — LinkedIn, Indeed, Glassdoor results)."""
     try:
@@ -402,8 +373,8 @@ search_query = ", ".join(search_queries[:3]) if search_queries else ""
 freshness_filter = st.sidebar.selectbox("Posted within", ["Any time", "Last 24 hours", "Last 3 days", "Last 7 days", "Last 14 days"])
 h1b_filter = st.sidebar.selectbox("H1B Sponsorship", ["All Jobs", "H1B Friendly / Likely", "No Sponsorship", "Unknown Only"])
 
-source_filter = st.sidebar.multiselect("Sources", ["Jooble", "TheMuse", "Google Jobs"],
-                                        default=["Jooble", "TheMuse", "Google Jobs"])
+source_filter = st.sidebar.multiselect("Sources", ["TheMuse", "Google Jobs"],
+                                        default=["TheMuse", "Google Jobs"])
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Resume Upload")
@@ -477,22 +448,21 @@ if needs_search:
         if not muse_cats_to_search:
             muse_cats_to_search.add("Engineering")
 
-        # Jooble — massive aggregator, search per role, 2 pages each
-        if "Jooble" in source_filter:
-            for role in selected_roles:
-                for pg in range(1, 3):
-                    all_jobs.extend(fetch_jooble(query=role, location="USA", page=pg))
-
         # TheMuse — search each category with multiple pages
         if "TheMuse" in source_filter:
             for mc in muse_cats_to_search:
-                for pg in range(3):
+                for pg in range(5):
                     all_jobs.extend(fetch_themuse(query=search_query, page=pg, muse_category=mc))
 
-        # Google Jobs — search PER ROLE for maximum results
+        # Google Jobs — search PER ROLE + keyword variations for max results
         if "Google Jobs" in source_filter:
             for role in selected_roles:
                 all_jobs.extend(fetch_jobs_live(query=role))
+                # Also search key terms from role for broader coverage
+                keywords = ROLES.get(role, {}).get("keywords", [])
+                top_kws = [k for k in keywords if " " in k][:2]  # multi-word phrases
+                for kw in top_kws:
+                    all_jobs.extend(fetch_jobs_live(query=f"{kw} engineer USA"))
 
         # Deduplicate by title+company
         seen = set()
@@ -641,9 +611,8 @@ with tab_export:
 with tab_setup:
     st.markdown("""
 ### Job Sources (all keys pre-configured)
-- **Jooble** — Massive job aggregator (80,000+ US tech jobs), includes salary data
-- **TheMuse** — 700+ US engineering jobs from major companies
-- **Google Jobs** — Aggregates LinkedIn, Indeed, Glassdoor results (via RapidAPI)
+- **TheMuse** — US engineering jobs from major companies (direct apply links)
+- **Google Jobs** — Aggregates LinkedIn, Indeed, Glassdoor results (direct apply links)
 
 All API keys are built in — no configuration needed. Just select your roles and search!
     """)

@@ -547,36 +547,58 @@ if needs_search:
                 seen.add(key)
                 unique.append(j)
         # Filter to USA-only jobs
-        usa_terms = {"united states", "usa", "us", "remote", "anywhere",
-                     "new york", "san francisco", "los angeles", "chicago", "seattle",
-                     "austin", "denver", "boston", "atlanta", "dallas", "houston",
-                     "miami", "portland", "san diego", "san jose", "phoenix",
-                     "philadelphia", "washington", "charlotte", "minneapolis",
-                     "detroit", "tampa", "orlando", "nashville", "raleigh",
-                     "salt lake", "pittsburgh", "columbus", "indianapolis",
-                     "kansas city", "st. louis", "baltimore", "milwaukee",
-                     "sacramento", "las vegas", "richmond", "hartford",
-                     "california", "texas", "florida", "virginia", "maryland",
-                     "massachusetts", "georgia", "illinois", "colorado",
-                     "north carolina", "ohio", "pennsylvania", "arizona",
-                     "oregon", "washington state", "michigan", "minnesota",
-                     "tennessee", "indiana", "missouri", "wisconsin",
-                     "connecticut", "utah", "nevada", "new jersey", "ny", "ca",
-                     "tx", "fl", "wa", "co", "ma", "ga", "il", "nc", "oh", "pa",
-                     "az", "or", "va", "md", "mn", "tn", "mo", "ct", "nj"}
+        # Long terms safe for substring matching
+        usa_cities_states = {"united states", "new york", "san francisco", "los angeles",
+            "chicago", "seattle", "austin", "denver", "boston", "atlanta", "dallas",
+            "houston", "miami", "portland", "san diego", "san jose", "phoenix",
+            "philadelphia", "charlotte", "minneapolis", "detroit", "tampa", "orlando",
+            "nashville", "raleigh", "salt lake", "pittsburgh", "columbus", "indianapolis",
+            "kansas city", "st. louis", "baltimore", "milwaukee", "sacramento",
+            "las vegas", "richmond", "hartford", "california", "texas", "florida",
+            "virginia", "maryland", "massachusetts", "illinois", "colorado",
+            "north carolina", "ohio", "pennsylvania", "arizona", "oregon", "michigan",
+            "minnesota", "tennessee", "missouri", "wisconsin", "connecticut", "utah",
+            "nevada", "new jersey", "washington", "kentucky", "alabama", "louisiana",
+            "oklahoma", "iowa", "arkansas", "mississippi", "nebraska", "idaho",
+            "hawaii", "maine", "montana", "wyoming", "vermont", "new hampshire",
+            "new mexico", "south dakota", "north dakota", "west virginia", "rhode island",
+            "delaware", "alaska", "ann arbor", "boulder", "chapel hill", "durham",
+            "irvine", "plano", "scottsdale", "tempe", "tucson", "tulsa",
+            "omaha", "madison", "cincinnati", "cleveland", "st louis", "san antonio",
+            "jacksonville", "memphis", "louisville", "oklahoma city", "el paso",
+            "albuquerque", "fresno", "mesa", "long beach", "virginia beach",
+            "colorado springs", "arlington", "wichita", "bakersfield", "boise",
+            "spokane", "tacoma", "honolulu", "anchorage", "des moines",
+            "little rock", "birmingham", "buffalo", "rochester", "norfolk"}
+        # Short terms need word-boundary regex matching
+        usa_short_codes = {"usa", "us", "ny", "ca", "tx", "fl", "wa", "co", "ma",
+            "ga", "il", "nc", "oh", "pa", "az", "or", "va", "md", "mn", "tn",
+            "mo", "ct", "nj", "wi", "in", "mi", "ky", "la", "sc", "al", "ok",
+            "ut", "nv", "nm", "ne", "ks", "id", "hi", "me", "mt", "wy", "vt",
+            "nh", "sd", "nd", "wv", "ri", "de", "ak", "ia", "ar", "ms"}
         usa_only = []
         for j in unique:
-            loc = j.get("location", "").lower().strip()
+            loc_raw = j.get("location", "").strip()
+            loc = loc_raw.lower()
             if not loc or loc in ("", "see posting"):
-                usa_only.append(j)  # keep if no location specified
+                usa_only.append(j)
                 continue
-            # Only keep if location positively matches USA
+            # Check remote/anywhere
+            if "remote" in loc or "anywhere" in loc:
+                usa_only.append(j)
+                continue
             is_usa = False
-            # Check USA terms
-            if any(ust in loc for ust in usa_terms):
+            # Substring match on long city/state names (safe, no false positives)
+            if any(ust in loc for ust in usa_cities_states):
                 is_usa = True
-            # Check "City, ST" pattern (2-letter state code)
-            if re.search(r',\s*[A-Z]{2}\b', j.get("location", "")):
+            # Word-boundary match on short state codes to avoid "Paris" matching "pa"
+            if not is_usa:
+                for code in usa_short_codes:
+                    if re.search(r'\b' + code + r'\b', loc):
+                        is_usa = True
+                        break
+            # "City, ST" pattern like "Austin, TX"
+            if not is_usa and re.search(r',\s*[A-Z]{2}\s*$', loc_raw):
                 is_usa = True
             if is_usa:
                 usa_only.append(j)
